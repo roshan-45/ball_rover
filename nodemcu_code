@@ -1,0 +1,115 @@
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+#include <Arduino_JSON.h>
+#include <ESP8266mDNS.h>
+#include <dht.h>
+
+
+#define DHT11_PIN D5
+// Add wifi access point credentiaals
+const char* ssid     = "dugu";
+const char* password = "12345678";
+
+ESP8266WebServer server(80);// Set port to 80
+
+
+String header; // This storees the HTTP request
+
+// Declare the pins to which the appliances are connected via relays
+int rW1 = D0; //appliance 1
+int rW2 = D1; //appliance 2
+int lW1 = D2; //appliance 1
+int lW2 = D3; //appliance 2``
+int devs[] = {D0,D1, D2,D3};
+String stats[] = {"s","s"};
+
+//you can add more more appliances below.
+
+String app1state = "s";// state of appliance1
+String app2state = "s";// state of appliance2
+
+
+void status(){
+  String arg1 = "{'0':'"+app1state+"', '1':'"+app2state+"'}";
+  server.send(200, "application/json", arg1);  
+}
+
+void modify(){
+  int de = server.arg(0).toInt();
+  String stat = server.arg(1);
+  if(de<sizeof(stats)){
+    Serial.print(de);
+    Serial.print(stat);
+    if(stat == "f") {digitalWrite(devs[de], 1);
+    digitalWrite(devs[de+1], 0);
+    }if(stat == "b") {digitalWrite(devs[de], 0);
+    digitalWrite(devs[de+1], 1);
+    }if(stat == "s") {digitalWrite(devs[de], 0);
+    digitalWrite(devs[de+1], 0);
+    }
+  }
+  server.send(200,"application/json", "'status':'success'"); 
+}
+
+void sensor(){
+  String meth = "Hello";
+  String hum = "";
+  int chk = DHT.read11(DHT11_PIN);
+   int data = analogRead(A0);
+
+  server.send(200, "application/json", "'methane':'"+data+"','humidity':'"+DHT.humidity+"','Temperature':'"+DHT.temperature+"'");
+}
+
+void handleNotFound() {
+  String message = "File Not Found\n\n";
+  message += "URI: ";
+  message += server.uri();
+  message += "\nMethod: ";
+  message += (server.method() == HTTP_GET) ? "GET" : "POST";
+  message += "\nArguments: ";
+  message += server.args();
+  message += "\n";
+
+  for (uint8_t i = 0; i < server.args(); i++) { message += " " + server.argName(i) + ": " + server.arg(i) + "\n"; }
+
+  server.send(404, "text/plain", message);
+}
+void setup() {
+  Serial.begin(9600);
+ // Set the pinmode of the pins to which the LEDs are connected and turn them low to prevent flunctuations
+ pinMode(D0, OUTPUT);
+  pinMode(D1, OUTPUT); 
+  pinMode(D2, OUTPUT);
+  pinMode(D3, OUTPUT); 
+   pinMode(D5, INPUT);
+  //digitalWrite(D0,HIGH);
+  //digitalWrite(D1,LOW);
+  //digitalWrite(D2,HIGH);
+  //digitalWrite(D3,LOW);
+  //connect to access point
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  // Print local IP address and start web server
+  Serial.println("");
+  Serial.println("WiFi connected.");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());// this will display the Ip address of the Pi which should be entered into your browser
+  if (MDNS.begin("esp8266")) { Serial.println("MDNS responder started"); }
+
+  server.on("/", status);
+  server.on("/status", status);
+  server.on("/mod", modify);
+  server.on("/data", sensor);
+  server.onNotFound(handleNotFound);
+  server.begin();
+}
+
+void loop(){
+  server.handleClient();
+  MDNS.update();
+}
